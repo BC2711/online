@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class GroupController extends Controller
 {
@@ -79,29 +80,49 @@ class GroupController extends Controller
      */
     public function store(Request $request)
     {
+        // Ensure the user is authenticated
+        if (!Auth::check()) {
+            return $this->errorResponse('Unauthorized.', 401);
+        }
+
         // Validate request data
-        $validator = Validator::make($request->all, [
+        $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
+            'status' => 'required|string|in:ACTIVE,INACTIVE',
+        ], [
+            'name.required' => 'The group name is required.',
+            'name.string' => 'The group name must be a string.',
+            'name.max' => 'The group name may not be greater than 255 characters.',
+            'status.required' => 'The status field is required.',
+            'status.string' => 'The status must be a string.',
+            'status.in' => 'The status must be either "active" or "inactive".',
         ]);
+
         if ($validator->fails()) {
-            return $this->errorResponse('Validation error', 422, $validator->errors());
+            return $this->errorResponse('Validation error.', 422, $validator->errors());
         }
 
         try {
-           return DB::transaction(function () use ($request) {
+            $group = DB::transaction(function () use ($request) {
                 // Create a new group
-                $group = Groups::create([
+                return Groups::create([
                     'name' => $request->name,
+                    'status' => Str::upper($request->status), 
                     'created_by' => Auth::id(),
                 ]);
-                return $this->successResponse(
-                    'Group created successfully',
-                    new GroupResource($group),
-                    201
-                );
             });
+
+            return $this->successResponse(
+                'Group created successfully.',
+                new GroupResource($group),
+                201
+            );
         } catch (\Exception $e) {
-            Log::error('Group creation error: ' . $e->getMessage());
+            Log::error('Group creation failed', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+                'request_data' => $request->all(),
+            ]);
             return $this->errorResponse('An error occurred while creating the group.', 500, $e->getMessage());
         }
     }
