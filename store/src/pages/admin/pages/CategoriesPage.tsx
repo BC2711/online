@@ -10,7 +10,6 @@ import {
 } from '@heroicons/react/24/solid';
 import { SearchIcon, FrownIcon } from 'lucide-react';
 import {
-    Category,
     createCategory,
     deleteCategory,
     getCategories,
@@ -23,23 +22,79 @@ import { debounce } from 'lodash';
 import TableSkeleton from '../../../components/TableSkeleton';
 import { Links, Meta } from '../../../service/interface';
 
-const CategoriesPage: React.FC = () => {
+// Define interfaces
+interface CategoryError {
+    name?: string[];
+    description?: string[];
+    message?: string;
+}
 
+interface Category {
+    id: number;
+    name: string;
+    description: string; // Changed to required string to match CreateCategoryInput
+    errors: {
+        name: string[];
+        description: string[];
+    };
+}
+
+interface CreateCategoryInput {
+    name: string;
+    description: string;
+    errors: {
+        name: string[];
+        description: string[];
+    };
+}
+
+// Reusable ErrorMessages component
+interface ErrorMessagesProps {
+    errors?: string[] | string;
+    id?: string;
+}
+
+const ErrorMessages: React.FC<ErrorMessagesProps> = ({ errors, id }) => {
+    if (!errors) return null;
+
+    const errorList = Array.isArray(errors) ? errors : [errors];
+
+    if (errorList.length === 0) return null;
+
+    return (
+        <div id={id} className="mt-1 space-y-1">
+            {errorList.map((error, index) => (
+                <p key={index} className="text-sm font-medium text-red-600">
+                    {error}
+                </p>
+            ))}
+        </div>
+    );
+};
+
+const CategoriesPage: React.FC = () => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [links, setLinks] = useState<Links | null>(null);
     const [meta, setMeta] = useState<Meta | null>(null);
     const [searchTerm, setSearchTerm] = useState<string>('');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof Category; direction: 'ascending' | 'descending' } | null>(null);
+    const [sortConfig, setSortConfig] = useState<{
+        key: keyof Category;
+        direction: 'ascending' | 'descending';
+    } | null>(null);
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-    const [newCategory, setNewCategory] = useState<Omit<Category, 'id' | 'message' | 'success'>>({ name: '', description: '', errors: { name: [], description: [] } });
     const [loading, setLoading] = useState<boolean>(false);
     const [formLoading, setFormLoading] = useState<boolean>(false);
-    const [error, setError] = useState<any>();
     const [message, setMessage] = useState<string | null>(null);
     const { authToken } = useAuth();
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [editMode, setEditMode] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState<number | null>(null);
+    const [error, setError] = useState<CategoryError | null>(null);
+    const [newCategory, setNewCategory] = useState<CreateCategoryInput>({
+        name: '',
+        description: '',
+        errors: { name: [], description: [] },
+    });
 
     // Debounced search
     const debouncedFetchCategories = useCallback(
@@ -56,7 +111,6 @@ const CategoriesPage: React.FC = () => {
         try {
             if (!authToken) throw new Error('Authentication token is missing.');
 
-            // Create query params
             const params = new URLSearchParams();
             params.append('page', currentPage.toString());
             if (searchTerm) params.append('search', searchTerm);
@@ -74,7 +128,7 @@ const CategoriesPage: React.FC = () => {
                 throw new Error('Failed to fetch categories.');
             }
         } catch (err: any) {
-            setError(err.message || 'An unexpected error occurred.');
+            setError({ message: err.message || 'An unexpected error occurred.' });
         } finally {
             setLoading(false);
         }
@@ -83,13 +137,11 @@ const CategoriesPage: React.FC = () => {
     useEffect(() => {
         debouncedFetchCategories();
         return () => debouncedFetchCategories.cancel();
-    }, [authToken, currentPage, searchTerm, sortConfig]);
-
+    }, [debouncedFetchCategories]);
 
     // Handle Add/Edit Category Submission
     const handleSubmitCategory = async (e: React.FormEvent) => {
         e.preventDefault();
-
         setFormLoading(true);
         setError(null);
 
@@ -97,37 +149,38 @@ const CategoriesPage: React.FC = () => {
             if (!authToken) throw new Error('Authentication token is missing.');
 
             if (editMode) {
-                // Update category
                 const updatedCategory = await updateCategory(authToken, editMode, newCategory);
-                if (updatedCategory.success) {
+                if (updatedCategory.id) {
                     setMessage('Category updated successfully!');
                 } else {
-                    throw new Error(updatedCategory.message || 'Failed to update category.');
+                    setError({
+                        message: updatedCategory.message || 'Failed to update category.',
+                        name: updatedCategory.errors?.name || [],
+                        description: updatedCategory.errors?.description || [],
+                    });
+                    return;
                 }
             } else {
-                // Add new category
                 const createdCategory = await createCategory(authToken, newCategory);
-              
-                if (createdCategory.success) {
+                if (createdCategory.id) {
                     setMessage('Category created successfully!');
                 } else {
-                    setMessage(createdCategory.message);
-                    setError(createdCategory.errors);
-                
-                    console.log('errors', createdCategory.errors);
-                    throw new Error(createdCategory.message || 'Failed to create category.');
+                    setError({
+                        message: createdCategory.message || 'Failed to create category.',
+                        name: createdCategory.errors?.name || [],
+                        description: createdCategory.errors?.description || [],
+                    });
+                    return;
                 }
             }
 
-            // Refetch categories
             await fetchCategories();
-
-            // Reset the form and close the modal
             setIsModalOpen(false);
             setNewCategory({ name: '', description: '', errors: { name: [], description: [] } });
             setEditMode(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err: any) {
-            setError(err.message || 'An unexpected error occurred while submitting the category.');
+            setError({ message: err.message || 'An unexpected error occurred while submitting the category.' });
         } finally {
             setFormLoading(false);
         }
@@ -143,15 +196,15 @@ const CategoriesPage: React.FC = () => {
                 setNewCategory({
                     name: category.data.name,
                     description: category.data.description || '',
-                    errors: { name: [], description: [] }
+                    errors: { name: [], description: [] },
                 });
                 setEditMode(id);
                 setIsModalOpen(true);
             } else {
-                throw new Error(category.message || 'Failed to fetch category.');
+                setError({ message: category.message || 'Failed to fetch category.' });
             }
         } catch (err: any) {
-            setError(err.message || 'An unexpected error occurred while fetching the category.');
+            setError({ message: err.message || 'An unexpected error occurred while fetching the category.' });
         }
     };
 
@@ -166,14 +219,15 @@ const CategoriesPage: React.FC = () => {
             if (!authToken) throw new Error('Authentication token is missing.');
 
             const response = await deleteCategory(authToken, id);
-            if (!response.success) {
+            console.log('delete',response);
+            if (!response.id) {
                 throw new Error('Failed to delete category.');
             }
-
-            setMessage('Category deleted successfully!');
+            setMessage(`Category ${response.name} deleted successfully !`);
             await fetchCategories();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err: any) {
-            setError(err.message || 'An unexpected error occurred while deleting the category.');
+            setError({ message: err.message || 'An unexpected error occurred while deleting the category.' });
         } finally {
             setIsDeleting(null);
         }
@@ -201,23 +255,34 @@ const CategoriesPage: React.FC = () => {
         if (!sortConfig) return 0;
 
         const key = sortConfig.key;
-        if (a[key] < b[key]) {
+        const aValue = a[key] ?? '';
+        const bValue = b[key] ?? '';
+        if (aValue < bValue) {
             return sortConfig.direction === 'ascending' ? -1 : 1;
         }
-        if (a[key] > b[key]) {
+        if (aValue > bValue) {
             return sortConfig.direction === 'ascending' ? 1 : -1;
         }
         return 0;
     });
 
     // Filtered categories
-    const filteredCategories = sortedCategories.filter(category => {
+    const filteredCategories = sortedCategories.filter((category) => {
         if (!searchTerm) return true;
         const term = searchTerm.toLowerCase();
         return (
             category.name.toLowerCase().includes(term) ||
-            (category.description && category.description.toLowerCase().includes(term)));
+            (category.description && category.description.toLowerCase().includes(term))
+        );
     });
+
+    // Auto-focus input when modal opens
+    useEffect(() => {
+        if (isModalOpen) {
+            const input = document.getElementById('category-name');
+            input?.focus();
+        }
+    }, [isModalOpen]);
 
     return (
         <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
@@ -256,6 +321,7 @@ const CategoriesPage: React.FC = () => {
                                 setIsModalOpen(true);
                                 setEditMode(null);
                                 setNewCategory({ name: '', description: '', errors: { name: [], description: [] } });
+                                setError(null);
                             }}
                             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out"
                         >
@@ -271,8 +337,17 @@ const CategoriesPage: React.FC = () => {
                         <div className="flex justify-between items-center">
                             <div className="flex items-center">
                                 <div className="flex-shrink-0">
-                                    <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    <svg
+                                        className="h-5 w-5 text-green-400"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                    >
+                                        <path
+                                            fillRule="evenodd"
+                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                            clipRule="evenodd"
+                                        />
                                     </svg>
                                 </div>
                                 <div className="ml-3">
@@ -288,19 +363,26 @@ const CategoriesPage: React.FC = () => {
                         </div>
                     </div>
                 )}
-                {error && (
+                {error?.message && !isModalOpen && (
                     <div className="rounded-md bg-red-50 p-4">
                         <div className="flex justify-between items-center">
                             <div className="flex items-center">
                                 <div className="flex-shrink-0">
-                                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    <svg
+                                        className="h-5 w-5 text-red-400"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                    >
+                                        <path
+                                            fillRule="evenodd"
+                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                            clipRule="evenodd"
+                                        />
                                     </svg>
                                 </div>
                                 <div className="ml-3">
-                                    {error?.name && Array.isArray(error.name) && (
-                                        <p className="text-sm font-medium text-red-800">{error.name}</p>
-                                    )}
+                                    <p className="text-sm font-medium text-red-800">{error.message}</p>
                                 </div>
                             </div>
                             <button
@@ -315,10 +397,9 @@ const CategoriesPage: React.FC = () => {
 
                 {/* Loading/Error States */}
                 {loading ? (
-                    <TableSkeleton rows={5} columns={3} />
+                    <TableSkeleton rows={10} columns={3} />
                 ) : (
                     <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                        {/* Table */}
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-gray-50">
@@ -354,7 +435,10 @@ const CategoriesPage: React.FC = () => {
                                                 </div>
                                             </th>
                                         ))}
-                                        <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        <th
+                                            scope="col"
+                                            className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                        >
                                             Actions
                                         </th>
                                     </tr>
@@ -434,91 +518,132 @@ const CategoriesPage: React.FC = () => {
 
                 {/* Pagination */}
                 {links && meta && meta.total > 0 && (
-                    <div className="bg-gray-50 ">
-                        <Pagination
-                            links={links}
-                            meta={meta}
-                            handlePageChange={handlePageChange}
-                        />
+                    <div className="bg-gray-50">
+                        <Pagination links={links} meta={meta} handlePageChange={handlePageChange} />
                     </div>
-
                 )}
-
 
                 {/* Add/Edit Category Modal */}
                 {isModalOpen && (
-                    <div className="fixed z-50 inset-0 overflow-y-auto">
+                    <div
+                        className="fixed z-50 inset-0 overflow-y-auto"
+                        aria-labelledby="modal-title"
+                        role="dialog"
+                        aria-modal="true"
+                    >
                         <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-                                <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
-                            </div>
-                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                            <div
+                                className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                                aria-hidden="true"
+                                onClick={() => {
+                                    setIsModalOpen(false);
+                                    setNewCategory({ name: '', description: '', errors: { name: [], description: [] } });
+                                    setEditMode(null);
+                                    setError(null);
+                                }}
+                            ></div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
+
+                            </span>
                             <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
                                 <div>
                                     <div className="mt-3 text-center sm:mt-0 sm:text-left">
-                                        <h3 className="text-lg leading-6 font-medium text-gray-900">
+                                        <h3 id="modal-title" className="text-lg leading-6 font-medium text-gray-900">
                                             {editMode ? 'Edit Category' : 'Create New Category'}
                                         </h3>
-                                        <div className="mt-2">
+                                        <div className="mt-4">
+                                            {error?.message && (
+                                                <div className="mb-4 rounded-md bg-red-50 p-3">
+                                                    <p className="text-sm font-medium text-red-800">{error.message}</p>
+                                                </div>
+                                            )}
                                             <form onSubmit={handleSubmitCategory}>
                                                 <div className="mb-4">
-                                                    <label htmlFor="category-name" className="block text-sm font-medium text-gray-700 mb-1">
+                                                    <label
+                                                        htmlFor="category-name"
+                                                        className="block text-sm font-medium text-gray-700 mb-1"
+                                                    >
                                                         Name <span className="text-red-500">*</span>
                                                     </label>
                                                     <input
                                                         id="category-name"
                                                         type="text"
-                                                        className="block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                                                        //    focus:ring-2 focus:ring-indigo-500 transition-colors
+                                                        className={`block w-full px-3 py-2 shadow-sm sm:text-sm border-gray-300 rounded-md transition-colors ${error?.name?.length
+                                                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500 focus:outline-red-500'
+                                                            : 'focus:ring-indigo-500 focus:border-indigo-500 focus:outline-blue-500'
+                                                            }`}
                                                         value={newCategory.name}
                                                         onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
                                                         placeholder="Enter category name"
-                                                        required
+
+                                                        disabled={formLoading}
+                                                        aria-invalid={error?.name?.length ? 'true' : 'false'}
+                                                        aria-describedby={error?.name?.length ? 'category-name-error' : undefined}
                                                     />
-                                                    <p className="text-sm font-medium text-red-800">{error?.name}</p>
+                                                    <ErrorMessages id="category-name-error" errors={error?.name} />
                                                 </div>
                                                 <div className="mb-4">
-                                                    <label htmlFor="category-description" className="block text-sm font-medium text-gray-700 mb-1">
+                                                    <label
+                                                        htmlFor="category-description"
+                                                        className="block text-sm font-medium text-gray-700 mb-1"
+                                                    >
                                                         Description
                                                     </label>
                                                     <textarea
                                                         id="category-description"
                                                         rows={3}
-                                                        className="block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                                                        className={`block w-full px-3 py-2 shadow-sm sm:text-sm border-gray-300 rounded-md transition-colors ${error?.description?.length
+                                                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                                                            : 'focus:ring-indigo-500 focus:border-indigo-500 focus:outline-blue-500'
+                                                            }`}
                                                         value={newCategory.description}
-                                                        onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
+                                                        onChange={(e) =>
+                                                            setNewCategory({ ...newCategory, description: e.target.value })
+                                                        }
                                                         placeholder="Enter category description (optional)"
-                                                    ></textarea>
-                                                    <p className="text-sm font-medium text-red-800">{error?.description}</p>
+                                                        disabled={formLoading}
+                                                        aria-describedby={
+                                                            error?.description?.length ? 'category-description-error' : undefined
+                                                        }
+                                                    />
+                                                    <ErrorMessages id="category-description-error" errors={error?.description} />
+                                                </div>
+                                                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                                                    <button
+                                                        type="submit"
+                                                        disabled={formLoading}
+                                                        className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm transition-opacity ${formLoading ? 'opacity-75 cursor-not-allowed' : ''
+                                                            }`}
+                                                    >
+                                                        {formLoading ? (
+                                                            <>
+                                                                <ArrowPathIcon className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" />
+                                                                {editMode ? 'Updating...' : 'Creating...'}
+                                                            </>
+                                                        ) : editMode ? 'Update Category' : 'Create Category'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setIsModalOpen(false);
+                                                            setNewCategory({
+                                                                name: '',
+                                                                description: '',
+                                                                errors: { name: [], description: [] },
+                                                            });
+                                                            setEditMode(null);
+                                                            setError(null);
+                                                        }}
+                                                        className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm transition-colors"
+                                                        disabled={formLoading}
+                                                    >
+                                                        Cancel
+                                                    </button>
                                                 </div>
                                             </form>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-                                    <button
-                                        type="button"
-                                        onClick={handleSubmitCategory}
-                                        disabled={formLoading}
-                                        className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm ${formLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
-                                    >
-                                        {formLoading ? (
-                                            <>
-                                                <ArrowPathIcon className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" />
-                                                {editMode ? 'Updating...' : 'Creating...'}
-                                            </>
-                                        ) : editMode ? 'Update Category' : 'Create Category'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsModalOpen(false);
-                                            setNewCategory({ name: '', description: '', errors: { name: [], description: [] } });
-                                            setEditMode(null);
-                                        }}
-                                        className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-                                    >
-                                        Cancel
-                                    </button>
                                 </div>
                             </div>
                         </div>

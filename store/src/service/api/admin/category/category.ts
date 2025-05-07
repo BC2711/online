@@ -95,7 +95,6 @@ export const createCategory = async (token: string, category: CreateCategoryInpu
         
         return response;
     } catch (error: any) {
-        // console.log("response in create category", error);
        return  error;
     }
 }
@@ -127,7 +126,7 @@ export const updateCategory = async (token: string, id: number, category: Create
  */
 export const deleteCategory = async (token: string, id: number): Promise<{ success: boolean }> => {
     try {
-        const response = await http.delete<{ success: boolean }>(`${CATEGORY_END_POINT}/${id}`, {
+        const response = await http.delete<Category>(`${CATEGORY_END_POINT}/${id}`, {
             headers: getAuthHeaders(token),
         });
         return response;

@@ -1,6 +1,6 @@
 import { http } from "../../../api-client";
 import { Links, Meta } from "../../../interface";
-import { ApiError } from "../../../api-client"; 
+import { ApiError } from "../../../api-client";
 
 export interface Customer {
     id: number;
@@ -28,13 +28,22 @@ export interface Group {
     id: number;
     name: string;
     status: string;
+    success: boolean;
+    message: string;
+    errors: Error;
+}
+
+interface Error {
+    name: string[];
+    status: string[];
 }
 
 export interface GroupResp {
     success: boolean;
+    errors: string[];
     data: Group[];
-    meta: Meta;
     links: Links;
+    meta: Meta;
     message: string;
 }
 export interface CustomerFormData {
@@ -198,16 +207,23 @@ export const getCustomerGroups = async (
     }
 };
 
-export const getAllGroups = async (
-    token: string,
-    page: number
-): Promise<GroupResp[]> => {
+// export const getCategories = async (token: string, page: number = 1): Promise<CategoryResponse> => {
+//     try {
+//         const response = await http.get<CategoryResponse>(`${CATEGORY_END_POINT}?page=${page}`, {
+//             headers: getAuthHeaders(token),
+//         });
+//         return response;
+//     } catch (error: any) {
+//         throw error as ApiError;
+//     }
+// };
+export const getAllGroups = async (token: string, page: number): Promise<GroupResp> => {
     try {
-        const response = await http.get<GroupResp[]>(`${GROUPS_ENDPOINT}?page=${page}`, {
+        const response = await http.get<GroupResp>(`${GROUPS_ENDPOINT}?page=${page}`, {
             headers: getAuthHeaders(token),
         });
         return response;
-    } catch (error) {
+    } catch (error: any) {
         throw error as ApiError;
     }
 };
@@ -254,8 +270,8 @@ export const createCustomerGroup = async (
             }
         );
         return response;
-    } catch (error) {
-        throw error as ApiError;
+    } catch (error: any) {
+        return error;
     }
 };
 
@@ -296,7 +312,7 @@ export const deleteCustomerGroup = async (
     id: number
 ): Promise<void> => {
     try {
-        await http.delete<void>(`${GROUPS_ENDPOINT}/${id}`, {
+        await http.delete<Group>(`${GROUPS_ENDPOINT}/${id}`, {
             headers: getAuthHeaders(token),
         });
     } catch (error) {

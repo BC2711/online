@@ -87,12 +87,13 @@ class GroupController extends Controller
 
         // Validate request data
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255|unique:groups,name',
             'status' => 'required|string|in:ACTIVE,INACTIVE',
         ], [
             'name.required' => 'The group name is required.',
             'name.string' => 'The group name must be a string.',
             'name.max' => 'The group name may not be greater than 255 characters.',
+            'name.unique' => 'The group name has already been taken.',
             'status.required' => 'The status field is required.',
             'status.string' => 'The status must be a string.',
             'status.in' => 'The status must be either "active" or "inactive".',
@@ -104,7 +105,6 @@ class GroupController extends Controller
 
         try {
             $group = DB::transaction(function () use ($request) {
-                // Create a new group
                 return Groups::create([
                     'name' => $request->name,
                     'status' => Str::upper($request->status), 

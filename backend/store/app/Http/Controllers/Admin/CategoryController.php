@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductCategoryResource;
+use App\Models\Product;
+use App\Models\Product_cartegory_mapping;
 use App\Models\ProductCategory;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -24,7 +26,9 @@ class CategoryController extends Controller
 
     public function index()
     {
-        $categories = ProductCategory::paginate(5);
+        $categories = ProductCategory::query()
+            ->orderBy('id', 'desc')
+            ->paginate(10);
 
         return response()->json([
             'success' => true,
@@ -167,14 +171,38 @@ class CategoryController extends Controller
     public function destroy(string $id)
     {
         try {
-            $category = ProductCategory::find($id);
+            // Find the category
+            $category = ProductCategory::findOrFail($id);
+
+            // Check if the category is a parent to other categories (self-referential)
+            $childCategories = ProductCategory::where('parent_category_id', $id)->exists();
+            if ($childCategories) {
+                return $this->errorResponse(
+                    'Cannot delete category because it has subcategories. Please reassign or delete the subcategories first.',
+                    422
+                );
+            }
+
+            // Check if the category is used in the products table (assuming a products table exists)
+            $productsUsingCategory = Product_cartegory_mapping::query()->where('category_id', $id)->exists();
+            if ($productsUsingCategory) {
+                return $this->errorResponse(
+                    'Cannot delete category because it is assigned to one or more products. Please reassign or remove the products first.',
+                    422
+                );
+            }
+
+            // If no dependencies, proceed with deletion
             $category->delete();
+
             return $this->successResponse(
                 'Category deleted successfully',
                 new ProductCategoryResource($category)
             );
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Category not found', 404);
         } catch (\Throwable $th) {
-            return $this->errorResponse('Category not found', 404, $th->getMessage());
+            return $this->errorResponse('An unexpected error occurred while deleting the category', 500, $th->getMessage());
         }
     }
 }
