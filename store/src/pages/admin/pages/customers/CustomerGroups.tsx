@@ -1,19 +1,19 @@
-import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { FiSearch } from "react-icons/fi";
 import {
   createCustomerGroup,
   getAllGroups,
   deleteCustomerGroup,
-  getCustomers,
   Group,
-  GroupResp,
-  Customer,
   updateCustomerGroup,
 } from "../../../../service/api/admin/customer/customer";
 import { useAuth } from "../../../../context/AuthContext";
 import TableSkeleton from "../../../../components/TableSkeleton";
 import EmptyState from "../../../../components/EmptyState";
 import { Links, Meta } from "../../../../service/interface";
+import Pagination from "../../../../components/Pagination";
+import { ArrowPathIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import ConfirmationModal from "../../../../components/ConfirmationModal";
 
 interface GroupError {
   name?: string[];
@@ -56,7 +56,6 @@ const ErrorMessages: React.FC<ErrorMessagesProps> = ({ errors, id }) => {
 
 const CustomerGroups: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [customerLoading, setCustomerLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<GroupError | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -65,69 +64,46 @@ const CustomerGroups: React.FC = () => {
   const [links, setLinks] = useState<Links | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
   const [newGroup, setNewGroup] = useState<CreateGroupInput>({
     name: "",
     status: "ACTIVE",
     errors: { name: [], status: [] },
   });
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<null | "ACTIVE" | "INACTIVE">(null);
   const messageRef = useRef<HTMLDivElement>(null);
   const [editGroupId, setEditGroupId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<Group>();
+
 
   // Fetch groups with proper error handling
-  const fetchGroups = async () => {
-    if (!authToken) {
-      setError({ message: "Authentication token is missing." });
-      return;
-    }
-
+  const fetchGroups = useCallback(async () => {
+    if (!authToken) setError({ message: "Authentication token is missing." });
     setLoading(true);
     setError(null);
     try {
-      const response = await getAllGroups(authToken, currentPage);
+      const response = await getAllGroups(authToken as string, currentPage, searchTerm, statusFilter);
       if (response.success) {
-        setGroups(response.data);
-        setLinks(response.links);
-        setMeta(response.meta);
+        setGroups(response.data)
+        setMeta(response.meta)
+        setLinks(response.links)
       } else {
-        setError({ message: response.message || "Failed to fetch groups." });
+        setError({ message: "Failed to Fetch Groups. Try again latter." })
       }
-    } catch (err: any) {
-      setError({ message: err.message || "An error occurred while fetching groups." });
+    } catch (error) {
+
     } finally {
       setLoading(false);
     }
-  }
-
-  // Fetch customers with proper error handling
-  const fetchCustomers = useCallback(async () => {
-    if (!authToken) {
-      setError({ message: "Authentication token is missing." });
-      return;
-    }
-
-    setCustomerLoading(true);
-    try {
-      const response = await getCustomers(authToken, { page: 1 });
-      if (response.success) {
-        setCustomers(response.data || []);
-      } else {
-        setError({ message: response.message || "Failed to fetch customers." });
-      }
-    } catch (err: any) {
-      setError({ message: err.message || "An error occurred while fetching customers." });
-    } finally {
-      setCustomerLoading(false);
-    }
-  }, [authToken]);
+  }, [authToken, currentPage, searchTerm, statusFilter])
 
   useEffect(() => {
     fetchGroups();
-    fetchCustomers();
-  }, [fetchGroups, fetchCustomers]);
+  }, [fetchGroups]);
 
   // Handle input changes for the modal form
   const handleInputChange = (
@@ -149,13 +125,14 @@ const CustomerGroups: React.FC = () => {
     setError(null);
 
     try {
-      const response = await (editGroupId
-        ? updateCustomerGroup(authToken, editGroupId, { name: newGroup.name, status: newGroup.status })
-        : createCustomerGroup(authToken, { name: newGroup.name, status: newGroup.status }));
-      if (response.success) {
+      const response = await (
+        editGroupId ? updateCustomerGroup(authToken, editGroupId, { name: newGroup.name, status: newGroup.status })
+          : createCustomerGroup(authToken, { name: newGroup.name, status: newGroup.status }));
+
+      if (response.id) {
         setMessage(editGroupId ? "Group updated successfully!" : "Group created successfully!");
         await fetchGroups();
-        setNewGroup({ name: "", status: "ACTIVE", errors: { name: [], status: [] } });
+        setNewGroup({ name: "", status: '', errors: { name: [], status: [] } });
         setEditGroupId(null);
         setIsModalOpen(false);
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -180,48 +157,28 @@ const CustomerGroups: React.FC = () => {
     setIsModalOpen(true);
   };
   // Handle group deletion
-  const deleteGroup = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this group? This action cannot be undone.")) return;
+  const deleteGroup = async () => {
+    setIsDeleting(groupToDelete?.id);
+    if (!authToken) setError({ message: "Authentication token is missing." });
 
-    if (!authToken) {
-      setError({ message: "Authentication token is missing." });
-      return;
-    }
+    // if (!window.confirm("Are you sure you want to delete this group? This action cannot be undone.")) return;
 
     try {
-      const response = await deleteCustomerGroup(authToken, id);
-      if (response.success) {
+      const response = await deleteCustomerGroup(authToken as string, groupToDelete.id);
+      if (response.id) {
         setMessage("Group deleted successfully!");
         await fetchGroups();
         window.scrollTo({ top: 0, behavior: "smooth" });
         messageRef.current?.focus();
       } else {
-        setError({ message: response.message || "Failed to delete group." });
+        setError({ message: "Failed to delete group." });
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (err: any) {
+      setIsDeleting(null);
       setError({ message: err.message || "An error occurred while deleting the group." });
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  };
-
-  // Memoize filtered customers
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((customer) => {
-      const matchesSearch =
-        customer.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && customer.is_active) ||
-        (statusFilter === "inactive" && !customer.is_active) ||
-        (statusFilter === "pending" && false); // Adjust if "pending" status exists
-      return matchesSearch && matchesStatus;
-    });
-  }, [customers, searchTerm, statusFilter]);
-
-  const getStatusColor = (isActive: boolean) => {
-    return isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800";
   };
 
   // Pagination navigation
@@ -261,6 +218,41 @@ const CustomerGroups: React.FC = () => {
         </button>
       </div>
 
+      <div className="bg-white shadow-md rounded-lg p-4 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+          <div className="relative w-full md:w-1/3">
+            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by group name..."
+              className="pl-10 pr-4 py-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex space-x-4">
+            <button
+              onClick={() => setStatusFilter(null)}
+              className={`px-4 py-2 rounded-md ${statusFilter === null ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}>All</button>
+            <button
+              onClick={() => setStatusFilter("ACTIVE")}
+              className={`px-4 py-2 rounded-md ${statusFilter === "ACTIVE" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setStatusFilter("INACTIVE")}
+              className={`px-4 py-2 rounded-md ${statusFilter === "INACTIVE" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+            >
+              Inactive
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Success Message */}
       {message && (
         <div
@@ -284,7 +276,7 @@ const CustomerGroups: React.FC = () => {
               className="text-sm text-green-600 hover:text-green-800 font-medium"
               aria-label="Dismiss success message"
             >
-              Dismiss
+              X
             </button>
           </div>
         </div>
@@ -326,15 +318,18 @@ const CustomerGroups: React.FC = () => {
               label: "Reset Filters",
               onClick: () => {
                 setSearchTerm("");
-                setStatusFilter("all");
+                setStatusFilter(null);
               },
             }}
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full divide-y divide-gray-200  hover:border-collapse">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    #
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Group Name
                   </th>
@@ -347,12 +342,15 @@ const CustomerGroups: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {groups.map((group) => (
-                  <tr key={group.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                {groups.map((group, index) => (
+                  <tr key={group.id} className="hover:bg-gray-50 transition-colors duration-150">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="font-medium text-gray-900">{index + 1}</div>
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
                       <div className="font-medium text-gray-900">{group.name}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-2 whitespace-nowrap">
                       <span
                         className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${group.status === "ACTIVE"
                           ? "bg-green-100 text-green-800"
@@ -363,14 +361,25 @@ const CustomerGroups: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button onClick={() => handleEditGroup(group)} className="text-blue-600 hover:text-blue-900 mr-3">
-                        Edit
-                      </button>
+                      <button onClick={() => handleEditGroup(group)}
+                        className="text-indigo-600 hover:text-indigo-900 p-1.5 rounded-md hover:bg-indigo-50 transition-all"
+                        title="Edit" disabled={isDeleting === group.id}
+                      > <PencilIcon className="h-5 w-5" /> </button>
                       <button
-                        onClick={() => deleteGroup(group.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
+                        onClick={() => {
+                          setGroupToDelete(group);
+                          setIsDeleteModalOpen(true);
+                        }}
+
+                        // onClick={() => deleteGroup(group.id)}
+                        className="text-red-600 hover:text-red-900 p-1.5 rounded-md hover:bg-red-50 transition-all"
+                        title="Delete" disabled={isDeleting === group.id} >
+                        {isDeleting === group.id ? (
+                          <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                        ) : (
+
+                          <TrashIcon className="h-5 w-5" />
+                        )}
                       </button>
                     </td>
                   </tr>
@@ -383,28 +392,7 @@ const CustomerGroups: React.FC = () => {
 
       {/* Pagination */}
       {meta && links && meta.total > 0 && (
-        <div className="mt-4 flex justify-between items-center text-sm text-gray-600">
-          <div>
-            Showing {(meta.current_page - 1) * meta.per_page + 1} to{" "}
-            {Math.min(meta.current_page * meta.per_page, meta.total)} of {meta.total} entries
-          </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => handlePageChange(links.prev)}
-              disabled={!links.prev}
-              className="px-3 py-1 border rounded-md bg-gray-50 disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => handlePageChange(links.next)}
-              disabled={!links.next}
-              className="px-3 py-1 border rounded-md bg-gray-50 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination links={links} meta={meta} handlePageChange={handlePageChange} />
       )}
 
       {/* Create Group Modal */}
@@ -423,11 +411,11 @@ const CustomerGroups: React.FC = () => {
           }}
           tabIndex={-1}
         >
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 id="modal-title" className="text-xl font-bold">
-                  Create New Group
+                  {editGroupId ? `Update ${newGroup.name}` : 'Create New Group'}
                 </h2>
                 <button
                   onClick={() => {
@@ -495,6 +483,7 @@ const CustomerGroups: React.FC = () => {
                   <ErrorMessages id="group-status-error" errors={error?.status} />
                 </div>
                 <div className="flex justify-end space-x-3">
+
                   <button
                     type="button"
                     onClick={() => {
@@ -535,7 +524,7 @@ const CustomerGroups: React.FC = () => {
                         ></path>
                       </svg>
                     )}
-                    Create Group
+                    {editGroupId ? 'Update Group' : 'Create Group'}
                   </button>
                 </div>
               </form>
@@ -544,121 +533,17 @@ const CustomerGroups: React.FC = () => {
         </div>
       )}
 
-      {/* Customer List */}
-      <div className="flex justify-between items-center mb-6 mt-12">
-        <h1 className="text-2xl font-bold">Customer List</h1>
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
-          Add Customer
-        </button>
-      </div>
-
-      <div className="bg-white shadow-md rounded-lg p-4 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
-          <div className="relative w-full md:w-1/3">
-            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by username or email..."
-              className="pl-10 pr-4 py-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setStatusFilter("all")}
-              className={`px-4 py-2 rounded-md ${statusFilter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter("active")}
-              className={`px-4 py-2 rounded-md ${statusFilter === "active" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-            >
-              Active
-            </button>
-            <button
-              onClick={() => setStatusFilter("inactive")}
-              className={`px-4 py-2 rounded-md ${statusFilter === "inactive" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-            >
-              Inactive
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white shadow-md rounded-lg overflow-hidden">
-        {customerLoading ? (
-          <TableSkeleton rows={5} columns={6} />
-        ) : filteredCustomers.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Username
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Phone
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Join Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredCustomers.map((customer) => (
-                  <tr key={customer.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">{customer.username}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{customer.email}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{customer.phone || "N/A"}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{customer.created_at}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
-                          customer.is_active
-                        )}`}
-                      >
-                        {customer.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button className="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
-                      <button className="text-red-600 hover:text-red-900">Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState
-            title="No Customers Found"
-            description="Try adjusting your filters or add a new customer."
-            action={{
-              label: "Reset Filters",
-              onClick: () => {
-                setSearchTerm("");
-                setStatusFilter("all");
-              },
-            }}
-          />
-        )}
-      </div>
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={deleteGroup}
+        title="Delete Group"
+        description={`Are you sure you want to delete "${groupToDelete?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+      />
     </div>
   );
 };

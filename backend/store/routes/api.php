@@ -26,6 +26,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/category', [AdminCategoryController::class, 'dropdownCategory']);
     Route::apiResource('/customers', CustomerController::class);
     Route::apiResource('/groups', GroupController::class);
-    Route::get('/groups/all', [GroupController::class, 'getAllGroups']);
+    Route::get('/groupsdrop', [GroupController::class, 'getAllGroups']);
     Route::apiResource('orders', OrdersController::class);
 });

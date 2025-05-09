@@ -200,7 +200,7 @@ class CategoryController extends Controller
                 new ProductCategoryResource($category)
             );
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->errorResponse('Category not found', 404);
+            return $this->errorResponse('Category not found', 404, $e);
         } catch (\Throwable $th) {
             return $this->errorResponse('An unexpected error occurred while deleting the category', 500, $th->getMessage());
         }

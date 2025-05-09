@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerResource;
 use App\Http\Resources\UserResource;
+use App\Models\Address;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
@@ -26,8 +28,7 @@ class CustomerController extends Controller
             'email' => 'nullable|string|max:255',
             'username' => 'nullable|string|max:255',
             'phone' => 'nullable|string|max:20',
-            'is_active' => 'nullable|boolean',
-            'group' => 'nullable|string|max:255',
+            'status' => 'nullable|boolean',
         ]);
 
         // Set default values
@@ -35,16 +36,15 @@ class CustomerController extends Controller
         $email = $validated['email'] ?? null;
         $username = $validated['username'] ?? null;
         $phone = $validated['phone'] ?? null;
-        $active = isset($validated['is_active']) ? $validated['is_active'] : null;
-        $group = $validated['group'] ?? null;
+        $active = isset($validated['status']) ? $validated['status'] : null;
 
         try {
             $query = User::query();
 
             // Eager-load group only if group filter is applied
-            if ($group) {
-                $query->with(['group']);
-            }
+            // if ($group) {
+            //     $query->with(['group']);
+            // }
 
             // Apply filters
             if ($email) {
@@ -60,14 +60,15 @@ class CustomerController extends Controller
             }
 
             if (isset($active)) {
-                $query->where('is_active', $active);
+                $status = $active ? 1 : 0;
+                $query->where('is_active', $status);
             }
 
-            if ($group) {
-                $query->whereHas('group', function ($q) use ($group) {
-                    $q->where('name', $group);
-                });
-            }
+            // if ($group) {
+            //     $query->whereHas('group', function ($q) use ($group) {
+            //         $q->where('name', $group);
+            //     });
+            // }
 
             // Execute query with pagination
             $customers = $query->orderBy('id', 'desc')->paginate($perPage);
@@ -106,31 +107,55 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         // Validate request data
-        $validator = Validator::make($request->all, [
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'username' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
-            'phone' => 'nullable|string|max:20',
-            'group_id' => 'nullable|exists:groups,id',
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'username' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'phone' => ['required', 'string', 'max:10', 'regex:/^\+?\d{10,15}$/', 'unique:users,phone'],
+            'group_id' => ['required', 'integer', Rule::exists('groups', 'id')],
+            'is_active' => ['required', 'boolean'],
+        ], [
+            'first_name.required' => 'First name is required.',
+            'first_name.string' => 'First name must be a string.',
+            'first_name.max' => 'First name cannot exceed 255 characters.',
+            'last_name.required' => 'Last name is required.',
+            'last_name.string' => 'Last name must be a string.',
+            'last_name.max' => 'Last name cannot exceed 255 characters.',
+            'username.required' => 'Username is required.',
+            'username.string' => 'Username must be a string.',
+            'username.max' => 'Username cannot exceed 255 characters.',
+            'email.required' => 'Email is required.',
+            'email.email' => 'Email must be a valid email address.',
+            'email.max' => 'Email cannot exceed 255 characters.',
+            'email.unique' => 'This email is already taken.',
+            'phone.required' => 'Phone number is required.',
+            'phone.string' => 'Phone must be a string.',
+            'phone.max' => 'Phone cannot exceed 10 numbers.',
+            'phone.regex' => 'Phone must be a valid number (e.g., 0965508033).',
+            'phone.unique' => 'This Phone number is already taken.',
+            'group_id.required' => 'Group is required.',
+            'group_id.integer' => 'Group ID must be an integer.',
+            'group_id.exists' => 'Selected group does not exist.',
+            'is_active.required' => 'Active status is required.',
+            'is_active.boolean' => 'Active status must be true or false.',
         ]);
         if ($validator->fails()) {
             return $this->errorResponse('Validation error', 422, $validator->errors());
         }
 
         try {
-            DB::transaction(function () use ($request) {
-                // Create customer
-                $user = $this->createCustomer($request);
-                return $this->successResponse(
-                    'Customer created successfully',
-                    new CustomerResource($user->load(['group'])),
-                    201
-                );
+            $customer = DB::transaction(function () use ($request) {
+                return $this->createCustomer($request);
             });
+            return $this->successResponse(
+                'Customer created successfully',
+                new CustomerResource($customer->load(['group'])),
+                201
+            );
         } catch (\Throwable $th) {
-            Log::error('Customer creation error: ' . $th->getMessage());
+            Log::error('Customer creation error: ' . $request);
             return $this->errorResponse('An error occurred while creating the customer.', 500, $th->getMessage());
         }
     }
@@ -156,12 +181,37 @@ class CustomerController extends Controller
     {
         // Validate request data
         $validator = Validator::make($request->all(), [
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'username' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email,' . $id,
-            'phone' => 'nullable|string|max:20',
-            'group_id' => 'nullable|exists:groups,id',
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'username' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $id],
+            'phone' => ['required', 'string', 'max:10', 'regex:/^\+?\d{10,15}$/', 'unique:users,phone,' . $id],
+            'group_id' => ['required', 'integer', Rule::exists('groups', 'id')],
+            'is_active' => ['required', 'boolean'],
+        ], [
+            'first_name.required' => 'First name is required.',
+            'first_name.string' => 'First name must be a string.',
+            'first_name.max' => 'First name cannot exceed 255 characters.',
+            'last_name.required' => 'Last name is required.',
+            'last_name.string' => 'Last name must be a string.',
+            'last_name.max' => 'Last name cannot exceed 255 characters.',
+            'username.required' => 'Username is required.',
+            'username.string' => 'Username must be a string.',
+            'username.max' => 'Username cannot exceed 255 characters.',
+            'email.required' => 'Email is required.',
+            'email.email' => 'Email must be a valid email address.',
+            'email.max' => 'Email cannot exceed 255 characters.',
+            'email.unique' => 'This email is already taken.',
+            'phone.required' => 'Phone number is required.',
+            'phone.string' => 'Phone must be a string.',
+            'phone.max' => 'Phone cannot exceed 10 numbers.',
+            'phone.regex' => 'Phone must be a valid number (e.g., 0965508033).',
+            'phone.unique' => 'This Phone number is already taken.',
+            'group_id.required' => 'Group is required.',
+            'group_id.integer' => 'Group ID must be an integer.',
+            'group_id.exists' => 'Selected group does not exist.',
+            'is_active.required' => 'Active status is required.',
+            'is_active.boolean' => 'Active status must be true or false.',
         ]);
         if ($validator->fails()) {
             return $this->errorResponse('Validation error', 422, $validator->errors());
@@ -190,12 +240,12 @@ class CustomerController extends Controller
     public function destroy(string $id)
     {
         try {
-           return DB::transaction(function () use ($id) {
+            $customer = DB::transaction(function () use ($id) {
                 // Delete customer
                 $user = User::findOrFail($id);
-                $user->delete();
-                return $this->successResponse('Customer deleted successfully', null, 200);
+                return $user->update(['is_active' => 0]);
             });
+            return $this->successResponse('Customer deleted successfully', $customer, 200);
         } catch (\Throwable $th) {
             Log::error('Customer deletion error: ' . $th->getMessage());
             return $this->errorResponse('An error occurred while deleting the customer.', 500, $th->getMessage());
@@ -227,6 +277,7 @@ class CustomerController extends Controller
             'username' => $request->username,
             'email' => $request->email,
             'phone' => $request->phone,
+            'is_active' => $request->is_active ? 1 : 0,
             'group_id' => $request->group_id ? $request->group_id : null,
             'updated_by' => Auth::user()->id,
         ]);

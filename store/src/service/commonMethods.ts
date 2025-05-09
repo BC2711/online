@@ -42,3 +42,4 @@ export const extractPageNumber = (url: string | null): number | null => {
 export const getAuthHeaders = (token: string) => ({
   Authorization: `Bearer ${token} `,
 });
+

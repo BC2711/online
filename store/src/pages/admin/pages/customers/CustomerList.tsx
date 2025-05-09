@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { FiSearch, FiFilter, FiPlus, FiRefreshCw } from "react-icons/fi";
+import { FiSearch, FiPlus, FiRefreshCw } from "react-icons/fi";
 import { Customer, getCustomers, deleteCustomer } from "../../../../service/api/admin/customer/customer";
 import { useAuth } from "../../../../context/AuthContext";
 import { formatDate } from "../../../../service/commonMethods";
@@ -14,7 +14,7 @@ import StatusBadge from "./StatusBadge";
 import ConfirmationModal from "../../../../components/ConfirmationModal";
 import CustomerFormModal from "./CustomerFormModal";
 
-type StatusFilter = "all" | true | false;
+type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
 const CustomerList: React.FC = () => {
   const { authToken } = useAuth();
@@ -23,8 +23,10 @@ const CustomerList: React.FC = () => {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [searchName, setSearchName] = useState("");
+  const [searchEmail, setSearchEmail] = useState("");
+  const [searchPhone, setSearchPhone] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
@@ -33,47 +35,63 @@ const CustomerList: React.FC = () => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  // Debounced search
-  const debouncedSearch = useMemo(
-    () => debounce((value: string) => {
-      setSearchTerm(value);
+  // Debounced search functions
+  const debouncedSetSearchName = useCallback(
+    debounce((value: string) => {
+      setSearchName(value);
+      setCurrentPage(1);
+    }, 300),
+    []
+  );
+
+  const debouncedSetSearchEmail = useCallback(
+    debounce((value: string) => {
+      setSearchEmail(value);
+      setCurrentPage(1);
+    }, 300),
+    []
+  );
+
+  const debouncedSetSearchPhone = useCallback(
+    debounce((value: string) => {
+      setSearchPhone(value);
       setCurrentPage(1);
     }, 300),
     []
   );
 
   const fetchCustomers = useCallback(async () => {
+    if (!authToken) {
+      setError("Not authorized.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setIsRefreshing(true);
     try {
-      setLoading(true);
-      setIsRefreshing(true);
-      setError(null);
-
-      const response = await getCustomers(authToken as string, {
-        page: currentPage,
-        username: searchTerm,
-        email: searchTerm,
-        phone: searchTerm,
-        is_active: statusFilter === "all" ? undefined : statusFilter,
-        sort: sortConfig ? `${sortConfig.key}:${sortConfig.direction}` : undefined,
-      });
-
-      console.log('errors:', response);
-      if (!response.success) {
-        throw new Error("Failed to fetch customers");
+      const status = statusFilter === "ALL" ? undefined : statusFilter === "ACTIVE" ? 1 : 0;
+      const response = await getCustomers(
+        authToken,
+        currentPage,
+        searchName,
+        searchEmail,
+        searchPhone,
+        status
+      );
+      if (response.success) {
+        setCustomers(response.data);
+        setLinks(response.links);
+        setMeta(response.meta);
+      } else {
+        setError(response.message || "Failed to fetch customers.");
       }
-
-      setCustomers(response.data);
-      setLinks(response.links);
-      setMeta(response.meta);
-    } catch (err) {
-      // console.log("Customer response:", err); 
-      setError(err instanceof Error ? err.message : "An error occurred: ");
-      toast.error("Failed to load customers");
+    } catch (error) {
+      setError("An error occurred while fetching customers. Please contact the administrator.");
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [authToken, currentPage, searchTerm, statusFilter, sortConfig]);
+  }, [authToken, currentPage, searchName, searchEmail, searchPhone, statusFilter, sortConfig]);
 
   useEffect(() => {
     fetchCustomers();
@@ -83,7 +101,8 @@ const CustomerList: React.FC = () => {
     if (!customerToDelete) return;
 
     try {
-      await deleteCustomer(authToken as string, customerToDelete.id);
+      const response = await deleteCustomer(authToken as string, customerToDelete.id);
+      console.log('delete', response)
       toast.success("Customer deleted successfully");
       setIsDeleteModalOpen(false);
       setCustomerToDelete(null);
@@ -103,16 +122,18 @@ const CustomerList: React.FC = () => {
       }
       return { key, direction: "asc" };
     });
+    setCurrentPage(1);
   };
 
   const handlePageChange = (url: string | null) => {
     if (url) {
       const page = new URL(url).searchParams.get("page");
-      setCurrentPage(Number(page));
+      setCurrentPage(Number(page) || 1);
     }
   };
 
   const handleRefresh = () => {
+    setCurrentPage(1);
     fetchCustomers();
   };
 
@@ -122,10 +143,10 @@ const CustomerList: React.FC = () => {
   };
 
   const statusFilters = [
-    { value: "all", label: "All" },
-    { value: 1, label: "Active" },
-    { value: 0, label: "Inactive" },
-  ];
+    { value: "ALL", label: "All" },
+    { value: "ACTIVE", label: "Active" },
+    { value: "INACTIVE", label: "Inactive" },
+  ] as const;
 
   const tableHeaders = [
     { label: "Customer", key: "username", sortable: true },
@@ -134,7 +155,12 @@ const CustomerList: React.FC = () => {
     { label: "Join Date", key: "created_at", sortable: true },
     { label: "Status", key: "is_active", sortable: true },
     { label: "Actions", key: null, sortable: false },
-  ];
+  ] as const;
+
+  // Memoized filtered customers
+  const displayedCustomers = useMemo(() => {
+    return customers;
+  }, [customers]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -144,7 +170,7 @@ const CustomerList: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Customers</h1>
           <p className="mt-2 text-sm text-gray-600">
             {meta?.total
-              ? `Showing ${customers.length} of ${meta.total} customers`
+              ? `Showing ${displayedCustomers.length} of ${meta.total} customers`
               : "Manage your customer database"}
           </p>
         </div>
@@ -171,42 +197,77 @@ const CustomerList: React.FC = () => {
 
       {/* Filters */}
       <div className="bg-white shadow-sm rounded-xl p-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
-          <div className="relative">
-            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-            <input
-              type="text"
-              placeholder="Search by name or email..."
-              className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              onChange={(e) => debouncedSearch(e.target.value)}
-              defaultValue={searchTerm}
-              aria-label="Search customers"
-            />
-
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:gap-6">
+          <div>
+            <label htmlFor="search-name" className="sr-only">
+              Search by Name
+            </label>
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                id="search-name"
+                type="text"
+                placeholder="Search by Name..."
+                value={searchName}
+                onChange={(e) => debouncedSetSearchName(e.target.value)}
+                className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                aria-label="Search customers by name"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="search-email" className="sr-only">
+              Search by Email
+            </label>
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                id="search-email"
+                type="text"
+                placeholder="Search by Email..."
+                value={searchEmail}
+                onChange={(e) => debouncedSetSearchEmail(e.target.value)}
+                className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                aria-label="Search customers by email"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="search-phone" className="sr-only">
+              Search by Phone
+            </label>
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <input
+                id="search-phone"
+                type="text"
+                placeholder="Search by Phone..."
+                value={searchPhone}
+                onChange={(e) => debouncedSetSearchPhone(e.target.value)}
+                className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                aria-label="Search customers by phone"
+              />
+            </div>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
             {statusFilters.map((filter) => (
               <button
                 key={filter.value}
-                onClick={() => setStatusFilter(filter.value as StatusFilter)}
+                onClick={() => {
+                  setStatusFilter(filter.value);
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-full transition-all ${statusFilter === filter.value
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 aria-label={`Filter by ${filter.label} status`}
+                aria-pressed={statusFilter === filter.value}
               >
                 {filter.label}
               </button>
             ))}
           </div>
-          <button
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-all"
-            onClick={() => toast.info("Advanced filters coming soon!")}
-            aria-label="Open advanced filters"
-          >
-            <FiFilter className="h-4 w-4" />
-            <span className="hidden sm:inline">More Filters</span>
-          </button>
         </div>
       </div>
 
@@ -226,9 +287,13 @@ const CustomerList: React.FC = () => {
             </div>
             <button
               onClick={fetchCustomers}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              disabled={isRefreshing}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2"
               aria-label="Retry loading customers"
             >
+              {isRefreshing && (
+                <FiRefreshCw className="h-4 w-4 animate-spin" />
+              )}
               Retry
             </button>
           </div>
@@ -239,17 +304,13 @@ const CustomerList: React.FC = () => {
       <div className="bg-white shadow-sm rounded-xl overflow-hidden">
         {loading ? (
           <TableSkeleton rows={5} columns={6} />
-        ) : customers.length === 0 ? (
+        ) : displayedCustomers.length === 0 ? (
           <EmptyState
             title="No Customers Found"
             description="Try adjusting your search or filter criteria, or add a new customer."
             action={{
-              label: "Reset Filters",
-              onClick: () => {
-                setSearchTerm("");
-                setStatusFilter("all");
-                setSortConfig(null);
-              },
+              label: "Add New Customer",
+              onClick: () => openFormModal(),
             }}
           />
         ) : (
@@ -257,9 +318,11 @@ const CustomerList: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {tableHeaders.map((header) => (
+                  {tableHeaders.map((header, index) => (
                     <th
                       key={header.label}
+                      scope="col"
+                      id={`header-${index}`}
                       className={`px-6 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${header.sortable ? "cursor-pointer hover:bg-gray-100" : ""
                         }`}
                       onClick={() => header.sortable && header.key && handleSort(header.key as keyof Customer)}
@@ -284,7 +347,7 @@ const CustomerList: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {customers.map((customer) => (
+                {displayedCustomers.map((customer) => (
                   <tr
                     key={customer.id}
                     className="hover:bg-gray-50 transition-colors duration-150"
@@ -302,9 +365,9 @@ const CustomerList: React.FC = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{customer.email}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{customer.email || "—"}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{customer.phone || "—"}</td>
-                    <td className="px-6 underscoring py-4 text-sm text-gray-600">{formatDate(customer.created_at)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(customer.created_at)}</td>
                     <td className="px-6 py-4">
                       <StatusBadge status={customer.is_active ? "active" : "inactive"} />
                     </td>
@@ -314,6 +377,7 @@ const CustomerList: React.FC = () => {
                           onClick={() => openFormModal(customer)}
                           className="p-1 text-blue-600 hover:text-blue-800 rounded-full hover:bg-blue-50 transition-colors"
                           aria-label={`Edit ${customer.username}`}
+                          title="Edit customer"
                         >
                           <PencilIcon className="h-5 w-5" />
                         </button>
@@ -324,6 +388,7 @@ const CustomerList: React.FC = () => {
                           }}
                           className="p-1 text-red-600 hover:text-red-800 rounded-full hover:bg-red-50 transition-colors"
                           aria-label={`Delete ${customer.username}`}
+                          title="Delete customer"
                         >
                           <TrashIcon className="h-5 w-5" />
                         </button>
@@ -340,11 +405,7 @@ const CustomerList: React.FC = () => {
       {/* Pagination */}
       {links && meta && meta.total > 0 && (
         <div className="bg-white px-6 py-4 border-t border-gray-200 rounded-b-xl shadow-sm">
-          <Pagination
-            links={links}
-            meta={meta}
-            handlePageChange={handlePageChange}
-          />
+          <Pagination links={links} meta={meta} handlePageChange={handlePageChange} />
         </div>
       )}
 

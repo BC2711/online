@@ -8,10 +8,22 @@ export interface Customer {
     first_name: string;
     last_name: string;
     email: string;
-    phone?: number;
+    phone?: string;
     is_active: boolean;
     created_at: string;
-    group_id: Group[];
+    group_id: number;
+    errors: FormErrors;
+    success: boolean;
+    message: string;
+}
+interface FormErrors {
+    username?: string;
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    group_id?: string;
+    api?: string;
 }
 
 export interface CustomerCreate {
@@ -87,13 +99,19 @@ const getAuthHeaders = (token: string) => ({
  * @throws ApiError - Detailed error information
  */
 export const getCustomers = async (
-    token: string,
-    params: CustomerQueryParams = {}
+    token: string, page: number, name: string, email: string, phone: string, status: any
 ): Promise<CustomerResp> => {
     try {
-        const response = await http.get<CustomerResp>(`${CUSTOMERS_ENDPOINT}?page=${params.page}&email=${params.email}`, {
-            headers: getAuthHeaders(token),
-        });
+        let response;
+        if (email) {
+            response = await http.get<CustomerResp>(`${CUSTOMERS_ENDPOINT}?page=${page}&username=${name}&email=${email}&phone=${phone}&status=${status}`, {
+                headers: getAuthHeaders(token),
+            });
+        } else {
+            response = await http.get<CustomerResp>(`${CUSTOMERS_ENDPOINT}?page=${page}`, {
+                headers: getAuthHeaders(token),
+            })
+        }
         return response;
     } catch (error) {
         throw error as ApiError;
@@ -126,21 +144,12 @@ export const getCustomerById = async (
  * @param data - Customer data
  * @throws ApiError - Detailed error information
  */
-export const createCustomer = async (
-    token: string,
-    data: CustomerFormData
-): Promise<Customer> => {
+export const createCustomer = async (token: string, data: CustomerFormData): Promise<Customer> => {
     try {
-        const response = await http.post<Customer>(
-            CUSTOMERS_ENDPOINT,
-            data,
-            {
-                headers: getAuthHeaders(token),
-            }
-        );
+        const response = await http.post<Customer>(CUSTOMERS_ENDPOINT, data, { headers: getAuthHeaders(token) });
         return response;
-    } catch (error) {
-        throw error as ApiError;
+    } catch (error: any) {
+        return error;
     }
 };
 
@@ -176,16 +185,14 @@ export const updateCustomer = async (
  * @param id - Customer ID
  * @throws ApiError - Detailed error information
  */
-export const deleteCustomer = async (
-    token: string,
-    id: number
-): Promise<void> => {
+export const deleteCustomer = async (token: string, id: number): Promise<Customer> => {
     try {
-        await http.delete<void>(`${CUSTOMERS_ENDPOINT}/${id}`, {
+        const response = await http.delete<Customer>(`${CUSTOMERS_ENDPOINT}/${id}`, {
             headers: getAuthHeaders(token),
         });
-    } catch (error) {
-        throw error as ApiError;
+        return response;
+    } catch (error: any) {
+        return error;
     }
 };
 
@@ -194,37 +201,28 @@ export const deleteCustomer = async (
  * @param token - Authentication token
  * @throws ApiError - Detailed error information
  */
-export const getCustomerGroups = async (
-    token: string
-): Promise<Group[]> => {
+export const getCustomerGroups = async (token: string): Promise<GroupResp> => {
     try {
-        const response = await http.get<Group[]>(GROUPS_ENDPOINT, {
-            headers: getAuthHeaders(token),
-        });
+        const response = await http.get<GroupResp>('groupsdrop', { headers: getAuthHeaders(token), });
         return response;
-    } catch (error) {
-        throw error as ApiError;
-    }
+    } catch (error: any) { return error; }
 };
 
-// export const getCategories = async (token: string, page: number = 1): Promise<CategoryResponse> => {
-//     try {
-//         const response = await http.get<CategoryResponse>(`${CATEGORY_END_POINT}?page=${page}`, {
-//             headers: getAuthHeaders(token),
-//         });
-//         return response;
-//     } catch (error: any) {
-//         throw error as ApiError;
-//     }
-// };
-export const getAllGroups = async (token: string, page: number): Promise<GroupResp> => {
+export const getAllGroups = async (token: string, page: number, name: string, status: any): Promise<GroupResp> => {
     try {
-        const response = await http.get<GroupResp>(`${GROUPS_ENDPOINT}?page=${page}`, {
-            headers: getAuthHeaders(token),
-        });
+        let response;
+        if (name || status) {
+            response = await http.get<GroupResp>(`${GROUPS_ENDPOINT}?page=${page}&name=${name}&status=${status}`, {
+                headers: getAuthHeaders(token),
+            });
+        } else {
+            response = await http.get<GroupResp>(`${GROUPS_ENDPOINT}?page=${page}`, {
+                headers: getAuthHeaders(token),
+            });
+        }
         return response;
     } catch (error: any) {
-        throw error as ApiError;
+        return error;
     }
 };
 
@@ -257,10 +255,7 @@ export const getCustomerGroupById = async (
  * @param data - Group data
  * @throws ApiError - Detailed error information
  */
-export const createCustomerGroup = async (
-    token: string,
-    data: Partial<Group>
-): Promise<Group> => {
+export const createCustomerGroup = async (token: string, data: Partial<Group>): Promise<Group> => {
     try {
         const response = await http.post<Group>(
             GROUPS_ENDPOINT,
@@ -296,8 +291,8 @@ export const updateCustomerGroup = async (
             }
         );
         return response;
-    } catch (error) {
-        throw error as ApiError;
+    } catch (error: any) {
+        return error;
     }
 };
 
@@ -307,15 +302,13 @@ export const updateCustomerGroup = async (
  * @param id - Group ID
  * @throws ApiError - Detailed error information
  */
-export const deleteCustomerGroup = async (
-    token: string,
-    id: number
-): Promise<void> => {
+export const deleteCustomerGroup = async (token: string, id: number): Promise<Group> => {
     try {
-        await http.delete<Group>(`${GROUPS_ENDPOINT}/${id}`, {
+        const response = await http.delete<Group>(`${GROUPS_ENDPOINT}/${id}`, {
             headers: getAuthHeaders(token),
         });
-    } catch (error) {
-        throw error as ApiError;
+        return response;
+    } catch (error: any) {
+        return error;
     }
 };

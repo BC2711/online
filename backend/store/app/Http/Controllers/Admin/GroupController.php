@@ -5,16 +5,19 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\GroupResource;
 use App\Models\Groups;
+use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Throwable;
 
 class GroupController extends Controller
 {
-    private const DEFAULT_PER_PAGE = 4;
+    private const DEFAULT_PER_PAGE = 10;
     /**
      * Display a listing of the resource.
      */
@@ -24,11 +27,13 @@ class GroupController extends Controller
         $validated = $request->validate([
             'per_page' => 'integer|min:1|max:100',
             'name' => 'nullable|string|max:255',
+            'status' => 'nullable|string',
         ]);
 
         // Set default values
         $perPage = $validated['per_page'] ?? self::DEFAULT_PER_PAGE;
         $name = $validated['name'] ?? null;
+        $status = $validated['status'] ?? null;
 
         try {
             $query = Groups::query();
@@ -36,6 +41,13 @@ class GroupController extends Controller
             // Apply filters
             if ($name) {
                 $query->where('name', 'like', '%' . $name . '%');
+            }
+            if ($status) {
+                $stat = $status;
+                if ($status == 'ALL') {
+                    $stat = '';
+                }
+                $query->where('status', Str::upper($stat));
             }
 
             // Paginate results
@@ -69,12 +81,26 @@ class GroupController extends Controller
     {
         try {
             $groups = Groups::all();
-            return $this->successResponse('Groups retrieved successfully', GroupResource::collection($groups));
+            return $this->successResponse(
+                'Groups retrieved successfully',
+                GroupResource::collection($groups),
+                200
+            );
         } catch (\Exception $e) {
-            Log::error('Group retrieval error: ' . $e->getMessage());
-            return $this->errorResponse('An error occurred while retrieving groups.', 500, $e->getMessage());
+            Log::error('Group retrieval error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id() ?? null,
+            ]);
+
+            return $this->errorResponse(
+                'Failed to retrieve groups.',
+                500,
+                app()->environment('production') ? null : $e->getMessage()
+            );
         }
     }
+
     /**
      * Store a newly created resource in storage.
      */
@@ -107,7 +133,7 @@ class GroupController extends Controller
             $group = DB::transaction(function () use ($request) {
                 return Groups::create([
                     'name' => $request->name,
-                    'status' => Str::upper($request->status), 
+                    'status' => $request->status,
                     'created_by' => Auth::id(),
                 ]);
             });
@@ -146,31 +172,54 @@ class GroupController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        // Validate ID
+        if (!is_numeric($id) || $id <= 0) {
+            return $this->errorResponse('Invalid ID provided.', 400, null);
+        }
+
         // Validate request data
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', 'unique:groups,name,' . $id],
+            'status' => ['required', 'string', 'in:ACTIVE,INACTIVE'],
+        ], [
+            'name.required' => 'Group name is required.',
+            'name.string' => 'The group name must be a string.',
+            'name.max' => 'The group name may not be greater than 255 characters.',
+            'name.unique' => 'The group name has already been taken.',
+            'status.required' => 'The status field is required.',
+            'status.string' => 'The status must be a string.',
+            'status.in' => 'The status must be either "ACTIVE" or "INACTIVE".',
         ]);
+
         if ($validator->fails()) {
             return $this->errorResponse('Validation error', 422, $validator->errors());
         }
 
         try {
-            return DB::transaction(function () use ($request, $id) {
-                // Update the group
+            $group = DB::transaction(function () use ($request, $id) {
                 $group = Groups::findOrFail($id);
                 $group->update([
                     'name' => $request->name,
+                    'status' => $request->status,
                     'updated_by' => Auth::id(),
                 ]);
-                return $this->successResponse(
-                    'Group updated successfully',
-                    new GroupResource($group),
-                    200
-                );
+                return $group; // Return the model instance, not the boolean
             });
+
+            return $this->successResponse(
+                'Group updated successfully',
+                new GroupResource($group),
+                200
+            );
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Group not found.', 404, null);
         } catch (\Exception $e) {
-            Log::error('Group update error: ' . $e->getMessage());
-            return $this->errorResponse('An error occurred while updating the group.', 500, $e->getMessage());
+            Log::error('Group update error: ' . $e->getMessage(), [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->errorResponse('An error occurred while updating the group.', 500, null);
         }
     }
 
@@ -180,15 +229,23 @@ class GroupController extends Controller
     public function destroy(string $id)
     {
         try {
-            return DB::transaction(function () use ($id) {
-                // Delete the group
-                $group = Groups::findOrFail($id);
-                $group->delete();
-                return $this->successResponse('Group deleted successfully', null, 204);
-            });
+            $group = Groups::findOrFail($id);
+            $user = User::where('group_id', $id)->exists();
+            if ($user) {
+                return $this->errorResponse(
+                    'Cannot delete Group because it has User. Please reassign or delete the users first.',
+                    422
+                );
+            }
+
+            $group->delete();
+            return $this->successResponse('Group deleted successfully.',  new GroupResource($group));
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return $this->errorResponse('Group not found', 404, $e);
         } catch (\Exception $e) {
+            // Log other unexpected errors
             Log::error('Group deletion error: ' . $e->getMessage());
-            return $this->errorResponse('An error occurred while deleting the group.', 500, $e->getMessage());
+            return $this->errorResponse('An error occurred while deleting the group.', 500, null);
         }
     }
 }
