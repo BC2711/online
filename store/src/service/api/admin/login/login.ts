@@ -25,7 +25,14 @@ export interface loginResponse {
     };
 }
 
+interface logoutResp {
+    id: number;
+    is_active: number;
+    username: string;
+}
+
 let LOGIN_ENDPOINT = "/login";
+let LOGOUT_ENDPOINT = "/logout";
 
 // Helper function to create auth headers
 const getAuthHeaders = (token: string) => ({
@@ -41,11 +48,11 @@ export const login = async (data: loginFormData): Promise<loginResponse> => {
     }
 };
 
-export const logout = async (token: string): Promise<loginResponse> => {
+export const logout = async (token: string): Promise<logoutResp> => {
     try {
-        const response = await http.post<loginResponse>(LOGIN_ENDPOINT, {}, { headers: getAuthHeaders(token) });
+        const response = await http.post<logoutResp>(LOGOUT_ENDPOINT, {}, { headers: getAuthHeaders(token) });
         return response;
-    } catch (error) {
-        throw error as ApiError;
+    } catch (error: any) {
+        return error;
     }
 };

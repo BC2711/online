@@ -21,7 +21,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { UsersIcon, MegaphoneIcon, ChartBarIcon, CogIcon } from 'lucide-react';
 import ReactDOM from 'react-dom';
-// import { logout } from '../../../service/api/admin/login/login';
+import { logout } from '../../../service/api/admin/login/login';
+import { useAuth } from '../../../context/AuthContext';
 
 // Type Definitions
 interface NavSubItem {
@@ -74,26 +75,6 @@ interface ThemeClasses {
   subItem: string;
 }
 
-interface User {
-  name: string;
-  role: string;
-  avatar: string;
-}
-
-interface AuthContextType {
-  user: User;
-}
-
-const AuthContext = React.createContext<AuthContextType | null>(null);
-
-const useAuth = (): AuthContextType => ({
-  user: {
-    name: 'John Doe',
-    role: 'Admin',
-    avatar:
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=100&h=100&q=80',
-  },
-});
 
 // Animation Variants
 const sidebarVariants = {
@@ -202,8 +183,8 @@ const NavItem: React.FC<NavItemProps> = React.memo(
           }}
           onKeyDown={(e) => onKeyDown(e, item)}
           className={`group relative flex items-center justify-between w-full p-3 rounded-lg transition-all duration-200 pointer-events-auto z-10 ${isActive
-              ? themeClasses.activeItem
-              : `${themeClasses.subItem} ${themeClasses.button}`
+            ? themeClasses.activeItem
+            : `${themeClasses.subItem} ${themeClasses.button}`
             } ${isCollapsed ? 'justify-center' : ''}`}
           aria-expanded={expandedSections[item.name] || false}
           aria-controls={`submenu-${item.name}`}
@@ -257,8 +238,8 @@ const NavItem: React.FC<NavItemProps> = React.memo(
                   to={subItem.link}
                   onClick={() => onClick(subItem.name)}
                   className={`flex items-center justify-between w-full p-2 rounded-lg text-sm transition-all duration-150 ${isActive && subItem.name === activeItem
-                      ? themeClasses.activeItem
-                      : themeClasses.subItem
+                    ? themeClasses.activeItem
+                    : themeClasses.subItem
                     }`}
                   tabIndex={expandedSections[item.name] ? 0 : -1}
                   data-testid={`sub-nav-item-${subItem.name.toLowerCase().replace(/\s/g, '-')}`}
@@ -329,8 +310,8 @@ const HoverCard: React.FC<HoverCardProps> = React.memo(
                   to={subItem.link}
                   onClick={() => onClick(subItem.name)}
                   className={`flex items-center justify-between w-full px-2 py-1.5 rounded text-sm transition-all ${activeItem === subItem.name
-                      ? themeClasses.activeItem
-                      : themeClasses.subItem
+                    ? themeClasses.activeItem
+                    : themeClasses.subItem
                     }`}
                   data-testid={`hover-sub-item-${subItem.name.toLowerCase().replace(/\s/g, '-')}`}
                 >
@@ -369,9 +350,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const location: Location = useLocation();
   const navigate = useNavigate();
-  const auth = useAuth();
-  // const {user, authToken} = useAuth();
-  // console.log('Auth user:', user);
+  const { authToken, user } = useAuth();
 
   // Swipe Handlers
   const swipeHandlers: SwipeableHandlers = useSwipeable({
@@ -596,17 +575,19 @@ const Sidebar: React.FC<SidebarProps> = ({
     [state.isCollapsed, toggleSection, handleItemClick]
   );
 
-  const handleLogout =  useCallback(() => {
-    // try {
-    //   const response = await logout(authToken)
-      
-    // } catch (error) {
-      
-    // }
-    toast.success('Logged out successfully');
-    dispatch({ type: 'SET_LOGOUT_MODAL', payload: false });
-    localStorage.removeItem('authToken');
-    navigate('auth/login');
+  const handleLogout = useCallback(async () => {
+    try {
+      const response = await logout(authToken as string);
+      if (response.id) {
+        toast.success('Logged out successfully');
+        dispatch({ type: 'SET_LOGOUT_MODAL', payload: false });
+        localStorage.removeItem('authToken');
+        navigate('/auth/login');
+      } 
+    } catch (error) {
+
+    }
+
   }, [navigate]);
 
   // Click Outside
@@ -782,14 +763,14 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center">
                 <img
-                  src={auth.user.avatar}
+                  src={user?.email}
                   alt="User profile"
                   className="h-9 w-9 rounded-full border-2 border-indigo-500/50 shadow-sm"
                 />
                 {!state.isCollapsed && (
                   <div className="ml-3">
-                    <p className="text-sm font-medium text-gray-200">{auth.user.name}</p>
-                    <p className="text-xs text-gray-400">{auth.user.role}</p>
+                    <p className="text-sm font-medium text-gray-200">{user?.username}</p>
+                    <p className="text-xs text-gray-400">{user?.username}</p>
                   </div>
                 )}
               </div>
@@ -946,5 +927,5 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-export { Sidebar, ErrorBoundary, AuthContext, useAuth };
+export { Sidebar, ErrorBoundary };
 export default Sidebar;

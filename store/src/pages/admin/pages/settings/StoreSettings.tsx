@@ -1,202 +1,152 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { getStore, updateStore } from '../../../../service/api/admin/store/store';
+import { useAuth } from '../../../../context/AuthContext';
 
 const StoreSettings: React.FC = () => {
-    const [storeInfo, setStoreInfo] = useState({
-        name: 'My Awesome Store',
-        email: 'contact@myawesomestore.com',
-        phone: '+1 (555) 123-4567',
-        address: '123 Commerce St, Business City, BC 10001',
-        currency: 'USD',
-        timezone: 'America/New_York',
-        maintenanceMode: false
-    });
+    const { authToken } = useAuth();
+    const [loading, setLoading] = useState<boolean>(false);
+    const [activeTab, setActiveTab] = useState<string>('general');
+    const [storeData, setStoreData] = useState<any>(null);
 
-    const [socialLinks, setSocialLinks] = useState({
-        facebook: 'https://facebook.com/myawesomestore',
-        instagram: 'https://instagram.com/myawesomestore',
-        twitter: 'https://twitter.com/myawesomestore'
-    });
+    // Mock tabs data - replace with your actual settings categories
+    const tabs = [
+        { id: 'general', label: 'General Settings' },
+        { id: 'payment', label: 'Payment Methods' },
+        { id: 'shipping', label: 'Shipping Options' },
+        { id: 'tax', label: 'Tax Settings' },
+    ];
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
+    useEffect(() => {
+        const fetchStoreData = async () => {
+            setLoading(true);
+            try {
+                const data = await getStore(authToken);
+                setStoreData(data);
+            } catch (error) {
+                console.error('Failed to fetch store data:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-        setStoreInfo(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }));
-    };
-
-    const handleSocialLinkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setSocialLinks(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        // In a real app, you would send this data to your backend
-        console.log('Store settings saved:', { storeInfo, socialLinks });
-        alert('Store settings saved successfully!');
-    };
+        fetchStoreData();
+    }, [authToken]);
 
     return (
-        <div className="p-6 max-w-6xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6">Store Settings</h1>
-
-            <form onSubmit={handleSubmit}>
-                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 className="text-xl font-semibold mb-4">Store Information</h2>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Store Name</label>
-                            <input
-                                type="text"
-                                name="name"
-                                value={storeInfo.name}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
-                            <input
-                                type="email"
-                                name="email"
-                                value={storeInfo.email}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                            <input
-                                type="tel"
-                                name="phone"
-                                value={storeInfo.phone}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                            <input
-                                type="text"
-                                name="address"
-                                value={storeInfo.address}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-                            <select
-                                name="currency"
-                                value={storeInfo.currency}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="USD">US Dollar (USD)</option>
-                                <option value="EUR">Euro (EUR)</option>
-                                <option value="GBP">British Pound (GBP)</option>
-                                <option value="JPY">Japanese Yen (JPY)</option>
-                                <option value="CAD">Canadian Dollar (CAD)</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-                            <select
-                                name="timezone"
-                                value={storeInfo.timezone}
-                                onChange={handleInputChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="America/New_York">Eastern Time (ET)</option>
-                                <option value="America/Chicago">Central Time (CT)</option>
-                                <option value="America/Denver">Mountain Time (MT)</option>
-                                <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                                <option value="Europe/London">London (GMT/BST)</option>
-                                <option value="Europe/Paris">Paris (CET/CEST)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center">
-                        <input
-                            type="checkbox"
-                            id="maintenanceMode"
-                            name="maintenanceMode"
-                            checked={storeInfo.maintenanceMode}
-                            onChange={handleInputChange}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor="maintenanceMode" className="ml-2 block text-sm text-gray-700">
-                            Enable Maintenance Mode
-                        </label>
-                    </div>
+        <div className="min-h-screen bg-gray-50 p-6">
+            <div className="max-w-6xl mx-auto">
+                {/* Header Section */}
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">Store Settings</h1>
+                    <p className="text-gray-600 mt-2">
+                        Manage your store configuration and preferences
+                    </p>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 className="text-xl font-semibold mb-4">Social Media Links</h2>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Facebook</label>
-                            <input
-                                type="url"
-                                name="facebook"
-                                value={socialLinks.facebook}
-                                onChange={handleSocialLinkChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="https://facebook.com/yourpage"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Instagram</label>
-                            <input
-                                type="url"
-                                name="instagram"
-                                value={socialLinks.instagram}
-                                onChange={handleSocialLinkChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="https://instagram.com/yourpage"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Twitter/X</label>
-                            <input
-                                type="url"
-                                name="twitter"
-                                value={socialLinks.twitter}
-                                onChange={handleSocialLinkChange}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="https://twitter.com/yourpage"
-                            />
+                {/* Loading Indicator */}
+                {loading && (
+                    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                        <div className="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center">
+                            <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
+                            <p className="text-gray-700">Loading store settings...</p>
                         </div>
                     </div>
-                </div>
+                )}
 
-                <div className="flex justify-end">
-                    <button
-                        type="submit"
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                    >
-                        Save Settings
-                    </button>
+                {/* Main Content Area */}
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                    {/* Tab Navigation */}
+                    <div className="border-b border-gray-200">
+                        <nav className="flex -mb-px">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`px-6 py-4 text-sm font-medium transition-colors duration-200 ${activeTab === tab.id
+                                            ? 'border-b-2 border-blue-500 text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                        }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+
+                    {/* Tab Content */}
+                    <div className="p-6">
+                        {activeTab === 'general' && (
+                            <div className="space-y-6">
+                                <h2 className="text-xl font-semibold text-gray-800">General Store Information</h2>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Store Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                            defaultValue={storeData?.name || ''}
+                                            placeholder="Enter store name"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Contact Email
+                                        </label>
+                                        <input
+                                            type="email"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                                            defaultValue={storeData?.email || ''}
+                                            placeholder="Enter contact email"
+                                        />
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Store Description
+                                        </label>
+                                        <textarea
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 min-h-[120px]"
+                                            defaultValue={storeData?.description || ''}
+                                            placeholder="Enter store description"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-4">
+                                    <button className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'payment' && (
+                            <div className="space-y-6">
+                                <h2 className="text-xl font-semibold text-gray-800">Payment Methods</h2>
+                                <p className="text-gray-600">Payment settings content goes here...</p>
+                            </div>
+                        )}
+
+                        {activeTab === 'shipping' && (
+                            <div className="space-y-6">
+                                <h2 className="text-xl font-semibold text-gray-800">Shipping Options</h2>
+                                <p className="text-gray-600">Shipping settings content goes here...</p>
+                            </div>
+                        )}
+
+                        {activeTab === 'tax' && (
+                            <div className="space-y-6">
+                                <h2 className="text-xl font-semibold text-gray-800">Tax Settings</h2>
+                                <p className="text-gray-600">Tax settings content goes here...</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     );
 };

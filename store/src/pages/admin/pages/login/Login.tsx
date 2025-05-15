@@ -1,41 +1,77 @@
 import React, { useState } from "react";
 import { Button, Input, Typography } from "@material-tailwind/react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { login } from "../../../../service/api/admin/login/login";
 import { useAuth } from "../../../../context/AuthContext";
 
+// ErrorMessages Component
+interface ErrorMessagesProps {
+    errors?: string[] | string;
+    id?: string;
+}
+
+const ErrorMessages: React.FC<ErrorMessagesProps> = ({ errors, id }) => {
+    if (!errors) return null;
+    const errorList = Array.isArray(errors) ? errors : [errors];
+    if (errorList.length === 0) return null;
+
+    return (
+        <div id={id} className="mt-1 space-y-1">
+            {errorList.map((error, index) => (
+                <p key={index} className="text-sm font-medium text-red-600">
+                    {error}
+                </p>
+            ))}
+        </div>
+    );
+};
+
+// Form-related interfaces
+interface FormErrors {
+    email?: string;
+    password?: string;
+    general?: string; // Added to handle general errors
+}
+
+interface FormData {
+    email: string;
+    password: string;
+}
+
 export default function LoginPage() {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [error, setError] = useState<string | null>(null);
+    const [formData, setFormData] = useState<FormData>({
+        email: "",
+        password: "",
+    });
+    const [error, setError] = useState<FormErrors>({});
     const [loading, setLoading] = useState(false);
     const { setAuthToken } = useAuth();
+    const navigate = useNavigate();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError(null);
+        setError({});
         setLoading(true);
 
         try {
-            const credentials = { email, password };
-            const response = await login(credentials);
-
-            console.log("Login successful:", response.token);
-            if(!response.token) {
+            const response = await login(formData);
+            if (!response.token) {
                 throw new Error("Login failed: No token received.");
             }
 
-            // Store the token in localStorage or a state management library
-            // setAuthToken(response.token);
-            // Optionally, you can store user data in localStorage or a state management library
+            // Store the token and user data
+            setAuthToken(response.token);
             localStorage.setItem("authToken", response.token);
             localStorage.setItem("user", JSON.stringify(response.user));
 
             // Redirect to the admin dashboard
-            window.location.href = "/admin/home";
+            navigate("/admin/home");
         } catch (error: any) {
-            console.error("Error during login:", error);
-            setError(error.message || "An unexpected error occurred. Please try again.");
+            setError({
+                email: error.errors.email,
+                password: error.errors.password,
+                general: error.message || "An unexpected error occurred. Please try again.",
+            });
         } finally {
             setLoading(false);
         }
@@ -51,11 +87,9 @@ export default function LoginPage() {
                 </div>
 
                 {/* Error Message */}
-                {error && (
-                    <div className="mb-4 text-red-600 text-sm text-center">
-                        {error}
-                    </div>
-                )}
+                <div className="text-center">
+                    <ErrorMessages errors={error.general} id="general-error" />
+                </div>
 
                 {/* Login Form */}
                 <form onSubmit={handleLogin}>
@@ -66,11 +100,13 @@ export default function LoginPage() {
                         <Input
                             type="email"
                             placeholder="Enter your email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            value={formData.email}
+                            onChange={(e) =>
+                                setFormData({ ...formData, email: e.target.value })
+                            }
                             aria-label="Email Address"
-                            required
                         />
+                        <ErrorMessages errors={error.email} id="email-error" />
                     </div>
                     <div className="mb-4">
                         <Typography variant="h6" color="primary" className="mb-2">
@@ -79,16 +115,21 @@ export default function LoginPage() {
                         <Input
                             type="password"
                             placeholder="Enter your password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            value={formData.password}
+                            onChange={(e) =>
+                                setFormData({ ...formData, password: e.target.value })
+                            }
                             aria-label="Password"
-                            required
                         />
+                        <ErrorMessages errors={error.password} id="password-error" />
                     </div>
 
                     {/* Forgot Password */}
                     <div className="text-right mb-4">
-                        <Link to="/admin/forget-password" className="text-sm text-blue-600 hover:underline">
+                        <Link
+                            to="/admin/forget-password"
+                            className="text-sm text-blue-600 hover:underline"
+                        >
                             Forgot Password?
                         </Link>
                     </div>

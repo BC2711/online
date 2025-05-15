@@ -133,14 +133,14 @@ class AuthController extends Controller
                 return $this->errorResponse('User not found', 404);
             }
 
-            return DB::transaction(function () use ($user) {
+            $user = DB::transaction(function () use ($user) {
                 $user->currentAccessToken()->delete();
-
                 // Dispatch event for user logout
                 event(new UserLoggedOut($user));
-
-                return $this->successResponse('Logout successful', null, 200);
+                return $user;
             });
+
+            return $this->successResponse('Logout successful', $user, 200);
         } catch (\Throwable $th) {
             Log::error('Logout error: ' . $th->getMessage(), ['exception' => $th]);
             return $this->errorResponse('Logout failed', 500);

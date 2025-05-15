@@ -28,4 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('/groups', GroupController::class);
     Route::get('/groupsdrop', [GroupController::class, 'getAllGroups']);
     Route::apiResource('orders', OrdersController::class);
+
+    // Store Settings
+    Route::apiResource('/store', StoreController::class);
 });
