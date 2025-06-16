@@ -80,7 +80,7 @@ class StoreController extends Controller
             'website' => 'nullable|url|max:255',
             'logo' => 'nullable|url|max:255',
             'status' => 'required|in:active,inactive',
-            'currency' => ['required', 'string', 'max:3', Rule::in(['ZMW', 'USD', 'EUR'])], // Example ISO 4217 codes
+            'currency' => ['required', 'string', 'max:3', Rule::in(['ZMW', 'USD', 'EUR'])],
             'timezone' => ['required', 'string', 'max:50', Rule::in(\DateTimeZone::listIdentifiers())],
             'city' => 'nullable|string|max:100',
             'facebook' => 'nullable|url|max:255',
